@@ -6,16 +6,22 @@ import streamlit as st
 from io import BytesIO
 from pandas.tseries.offsets import MonthEnd
 
-# CONFIGURACIÓN
+# -------------------------
+# CONFIGURATION
+# -------------------------
 USE_FAKE = True
 SEED = 42
 np.random.seed(SEED)
 
-# 1. Cargar datos
+# -------------------------
+# 1. Load data
+# -------------------------
 hc_df    = pd.read_excel("Fake_HC.xlsx")
 bajas_df = pd.read_excel("Fake_Bajas.xlsx")
 
-# 2. Consolidar base
+# -------------------------
+# 2. Combine base
+# -------------------------
 cols = [
     "N. EMPLOYEE", "DATE OF BIRTH", "GENDER", "HIRE DATE",
     "FUNCTION", "COUNTRY P&L", "ADMINISTRATIVO - ALMACEN - TRAINEE",
@@ -30,7 +36,9 @@ base["HIRE DATE"]        = pd.to_datetime(base["HIRE DATE"], errors="coerce")
 base["LAST DAY OF WORK"] = pd.to_datetime(base["LAST DAY OF WORK"], errors="coerce")
 base["DATE OF BIRTH"]    = pd.to_datetime(base["DATE OF BIRTH"], errors="coerce")
 
-# 3. Datos ficticios
+# -------------------------
+# 3. Generate anonymized data
+# -------------------------
 if USE_FAKE:
     unique_cc = base["COST CENTER"].dropna().unique()
     base["COST CENTER"] = base["COST CENTER"].map({cc: f"CC_{i+1}" for i, cc in enumerate(unique_cc)}).fillna("CC_Unknown")
@@ -40,7 +48,9 @@ if USE_FAKE:
     mask_exit = ~base["LAST DAY OF WORK"].isna()
     base.loc[mask_exit, "LAST DAY OF WORK"] += pd.to_timedelta(np.random.randint(-180, 180, mask_exit.sum()), unit="d")
 
-# 4. KPIs mensuales
+# -------------------------
+# 4. Monthly KPIs
+# -------------------------
 fechas = pd.date_range(start="2022-01-31", end=pd.Timestamp.today(), freq="M")
 resumen = []
 for fecha in fechas:
@@ -59,7 +69,9 @@ for fecha in fechas:
     })
 df_resumen = pd.DataFrame(resumen)
 
-# 5. Desglose por segmento
+# -------------------------
+# 5. Segment breakdown
+# -------------------------
 def build_group_df(group_col):
     recs = []
     for fecha in fechas:
@@ -73,7 +85,9 @@ df_gender = build_group_df("GENDER")
 df_cost   = build_group_df("COST CENTER")
 df_exit   = build_group_df("EXIT TYPE")
 
-# 6. Template de colores
+# -------------------------
+# 6. Plotly Template
+# -------------------------
 custom_template = dict(
     layout=go.Layout(
         font=dict(family="Arial", size=14, color="#2B2B2B"),
@@ -85,7 +99,9 @@ custom_template = dict(
     )
 )
 
+# -------------------------
 # 7. Dashboard
+# -------------------------
 def render_dashboard():
     st.set_page_config(layout="wide", page_title="HR Analytics Sample")
     st.image("Personal_logo.jpg", use_column_width=True)
@@ -98,55 +114,34 @@ def render_dashboard():
     gender_cnt = active["GENDER"].value_counts()
     loc_cnt = active["LOCATION"].value_counts()
     c0, c1, c2 = st.columns(3)
-    c0.metric("👥 Headcount Actual", total_active)
-    c1.metric("♂ Hombres", int(gender_cnt.get("Male", 0)))
-    c2.metric("♀ Mujeres", int(gender_cnt.get("Female", 0)))
-    st.markdown("### 📍 Location")
+    c0.metric("👥 Total Headcount", total_active)
+    c1.metric("♂ Male", int(gender_cnt.get("Male", 0)))
+    c2.metric("♀ Female", int(gender_cnt.get("Female", 0)))
+    st.markdown("### 🌍 Headcount by Location")
     for col, (loc, cnt) in zip(st.columns(len(loc_cnt)), loc_cnt.items()):
         col.metric(loc, cnt)
 
-    # Hires & Terms
-    st.markdown("### 📈 Descriptive Monthly Data")
-    fig_h = px.bar(df_resumen, x="Month", y="Hires", text="Hires").update_layout(template=custom_template)
-    fig_t = px.bar(df_resumen, x="Month", y="Terminations", text="Terminations").update_layout(template=custom_template)
-    st.plotly_chart(fig_h, use_container_width=True)
-    st.plotly_chart(fig_t, use_container_width=True)
+    # Hires & Terminations
+    st.markdown("### 📈 Monthly Hires and Terminations")
+    st.plotly_chart(px.bar(df_resumen, x="Month", y="Hires", text="Hires", title="Monthly Hires", template=custom_template), use_container_width=True)
+    st.plotly_chart(px.bar(df_resumen, x="Month", y="Terminations", text="Terminations", title="Monthly Terminations", template=custom_template), use_container_width=True)
 
-    # Exit type
-    st.markdown("### 📊 Turnover Type")
+    # Exit types
+    st.markdown("### 📊 Terminations by Type")
     fig_et = px.bar(df_exit, x="Month", y="Term Count", color="EXIT TYPE", barmode="group").update_layout(template=custom_template)
     st.plotly_chart(fig_et, use_container_width=True)
 
-    # KPIs
-    st.markdown("### 📉 Turnover KPI's")
-    st.plotly_chart(px.line(df_resumen, x="Month", y="Turnover Rate", markers=True).update_layout(template=custom_template), use_container_width=True)
-    st.plotly_chart(px.line(df_resumen, x="Month", y="Hire Rate", markers=True).update_layout(template=custom_template), use_container_width=True)
+    # KPI trends
+    st.markdown("### 📉 Key Metrics Trends")
+    st.plotly_chart(px.line(df_resumen, x="Month", y="Turnover Rate", markers=True, title="Turnover Rate").update_layout(yaxis_tickformat=".0%", template=custom_template), use_container_width=True)
+    st.plotly_chart(px.line(df_resumen, x="Month", y="Hire Rate", markers=True, title="Hire Rate").update_layout(yaxis_tickformat=".0%", template=custom_template), use_container_width=True)
 
-    # Breakdown
-    st.markdown("### 💼 Breakdown por Segmento")
-    st.plotly_chart(px.line(df_gender, x="Month", y="Rate", color="GENDER", markers=True).update_layout(template=custom_template), use_container_width=True)
-    st.plotly_chart(px.line(df_cost, x="Month", y="Rate", color="COST CENTER", markers=True).update_layout(template=custom_template), use_container_width=True)
-    st.plotly_chart(px.line(df_exit, x="Month", y="Rate", color="EXIT TYPE", markers=True).update_layout(template=custom_template), use_container_width=True)
+    # Segment breakdown
+    st.markdown("### 💼 Termination Breakdown by Segment")
+    st.plotly_chart(px.line(df_gender, x="Month", y="Rate", color="GENDER", markers=True, title="By Gender").update_layout(yaxis_tickformat=".0%", template=custom_template), use_container_width=True)
+    st.plotly_chart(px.line(df_cost, x="Month", y="Rate", color="COST CENTER", markers=True, title="By Cost Center").update_layout(yaxis_tickformat=".0%", template=custom_template), use_container_width=True)
+    st.plotly_chart(px.line(df_exit, x="Month", y="Rate", color="EXIT TYPE", markers=True, title="By Exit Type").update_layout(yaxis_tickformat=".0%", template=custom_template), use_container_width=True)
 
-    # Headcount histórico
-    st.markdown("### 📋 Headcount Histórico")
+    # Headcount table & trend
+    st.markdown("### 📋 Historical Headcount")
     hc_table = df_resumen[["Month", "Headcount End"]].copy()
-    hc_table["Month"] = hc_table["Month"].dt.strftime("%b %Y")
-    st.dataframe(hc_table, use_container_width=True)
-    fig_hc = px.bar(hc_table, x="Month", y="Headcount End", text="Headcount End").update_layout(template=custom_template)
-    st.plotly_chart(fig_hc, use_container_width=True)
-
-    # Export
-    def to_excel(df):
-        buf = BytesIO()
-        df.to_excel(buf, index=False)
-        return buf.getvalue()
-    st.download_button("📥 Descargar Resumen", data=to_excel(df_resumen), file_name="Resumen_HR.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-    # Footer
-    st.markdown("---")
-    st.markdown("🔗 Connect with me on [LinkedIn](https://www.linkedin.com/in/diego-gonzalez-farias-248870234/)")
-
-# Ejecutar
-if __name__ == "__main__":
-    render_dashboard()
