@@ -145,3 +145,6 @@ def render_dashboard():
     # Headcount table & trend
     st.markdown("### 📋 Historical Headcount")
     hc_table = df_resumen[["Month", "Headcount End"]].copy()
+
+if __name__ =='__main__':
+    render_dashboard()
